@@ -150,12 +150,53 @@ export function featurePopupContent(feature: GeoJSON.Feature) {
     popup += "</ul>";
   }
 
+  // Get coordinates for Street View (works for all geometry types)
+  let lat, lon;
   if (feature.geometry.type == "Point") {
-    const lat = feature.geometry.coordinates[1];
-    const lon = feature.geometry.coordinates[0];
+    lat = feature.geometry.coordinates[1];
+    lon = feature.geometry.coordinates[0];
     popup +=
       `<h3 class="subtitle is-5"><span class="t" data-t="popup.coordinates">Coordinates</span></h3>` +
       `<p><a href="geo:${lat},${lon}">${lat} / ${lon}</a> <small>(lat/lon)</small></p>`;
+  } else if (feature.geometry.type == "LineString") {
+    // Use first point of linestring
+    lat = feature.geometry.coordinates[0][1];
+    lon = feature.geometry.coordinates[0][0];
+  } else if (feature.geometry.type == "Polygon") {
+    // Use first point of outer ring
+    lat = feature.geometry.coordinates[0][0][1];
+    lon = feature.geometry.coordinates[0][0][0];
+  } else if (feature.geometry.type == "MultiPolygon") {
+    // Use first point of first polygon's outer ring
+    lat = feature.geometry.coordinates[0][0][0][1];
+    lon = feature.geometry.coordinates[0][0][0][0];
+  }
+  
+  // Add Street View buttons if we have coordinates
+  if (lat !== undefined && lon !== undefined) {
+    popup += `
+      <h3 class="subtitle is-5">🌍 Street View</h3>
+      <div class="buttons are-small" style="margin-bottom: 1rem;">
+        <button class="button is-link is-light" onclick="window.open('https://www.google.com/maps?q=&layer=c&cbll=${lat},${lon}', '_blank')">
+          <span class="icon">
+            <i class="fas fa-street-view"></i>
+          </span>
+          <span>Google Street View</span>
+        </button>
+        <button class="button is-success is-light" onclick="window.open('https://www.mapillary.com/app/?lat=${lat}&lng=${lon}&z=17', '_blank')">
+          <span class="icon">
+            <i class="fas fa-camera"></i>
+          </span>
+          <span>Mapillary</span>
+        </button>
+        <button class="button is-info is-light" onclick="window.open('https://kartaview.org/map/@${lat},${lon},17z', '_blank')">
+          <span class="icon">
+            <i class="fas fa-map-marked-alt"></i>
+          </span>
+          <span>KartaView</span>
+        </button>
+      </div>
+    `;
   }
   if (
     $.inArray(feature.geometry.type, [

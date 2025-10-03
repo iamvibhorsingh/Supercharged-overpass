@@ -1,7 +1,11 @@
 {
+
+  "nav.table": "Table",
   "nav.run": "Run",
   "nav.run_tt": "execute this query on Overpass API",
   "nav.rerender_tt": "parse the MapCSS and rerender the map",
+  "nav.clear": "Clear",
+  "nav.clear_tt": "Clear the query editor",
   "nav.share": "Share",
   "nav.share_tt": "get a permalink for this query",
   "nav.export": "Export",
@@ -18,6 +22,10 @@
   "nav.settings_tt": "various settings",
   "nav.help": "Help",
   "nav.help_tt": "help, about and attributions",
+
+  "search": {
+    "placeholder": "Search for places..."
+  },
 
   "nav.logout": "Logout",
   "nav.logout_tt": "logout from currently synced osm account",

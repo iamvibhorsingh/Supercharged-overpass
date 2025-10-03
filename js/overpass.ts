@@ -703,14 +703,15 @@ class Overpass {
                     }
                   overpass.stats = stats;
 
-                  if (!shouldCacheOnly) overpass.fire("onGeoJsonReady");
+                  overpass.resultText = jqXHR.responseText;
+                  if (!shouldCacheOnly) {
+                    overpass.fire("onGeoJsonReady");
+                    overpass.fire("onRawDataPresent");
+                  }
 
                   // print raw data
                   overpass.fire("onProgress", "printing raw data");
                   setTimeout(() => {
-                    overpass.resultText = jqXHR.responseText;
-                    overpass.fire("onRawDataPresent");
-
                     // todo: the following would profit from some unit testing
                     // this is needed for auto-tab-switching: if there is only non map-visible data, show it directly
                     if (geojson.features.length === 0) {

@@ -27,6 +27,8 @@ import {Base64, htmlentities, lzw_encode, lzw_decode} from "./misc";
 import sync from "./sync-with-osm";
 import shortcuts, {Shortcut} from "./shortcuts";
 
+
+
 declare const CodeMirror;
 
 // Handler to allow copying in various MIME formats
@@ -98,6 +100,53 @@ function make_combobox(input, options, deletables, deleteCallback) {
     });
   input[0].is_combobox = true;
 } // make_combobox()
+
+function handleSuccessfulQuery(data) {
+    const tableContainer = $("#table-container");
+    tableContainer.empty();
+
+    if (data.features && data.features.length > 0) {
+        const table = $('<table class="table table-striped"></table>');
+        const thead = $('<thead></thead>');
+        const tbody = $('<tbody></tbody>');
+
+        // Get headers from the properties of all features
+        const headers = new Set();
+        data.features.forEach(feature => {
+            if (feature.properties) {
+                Object.keys(feature.properties).forEach(header => {
+                    headers.add(header);
+                });
+            }
+        });
+        const header_list = Array.from(headers);
+        const header_row = $('<tr></tr>');
+        header_list.forEach(header => {
+            header_row.append(`<th>${header}</th>`);
+        });
+        thead.append(header_row);
+
+        // Populate table rows
+        data.features.forEach(feature => {
+            const row = $('<tr></tr>');
+            header_list.forEach(header => {
+                let cell_content = "";
+                if (feature.properties && typeof feature.properties[header] === 'object') {
+                    cell_content = JSON.stringify(feature.properties[header]);
+                } else if (feature.properties && feature.properties[header]) {
+                    cell_content = feature.properties[header];
+                }
+                row.append(`<td>${cell_content}</td>`);
+            });
+            tbody.append(row);
+        });
+
+        table.append(thead, tbody);
+        tableContainer.append(table);
+    } else {
+        tableContainer.html("<p>No data to display in table format.</p>");
+    }
+}
 
 function showDialog(title, content, buttons) {
   const dialogContent = `\
@@ -257,6 +306,7 @@ class IDE {
     settings.load();
     // translate ui
     this.waiter.addInfo("translate ui");
+
     i18n.translate().then(() => this.initAfterI18n());
 
     if (sync.enabled) {
@@ -548,19 +598,40 @@ class IDE {
     });
 
     // tabs
-    $("#dataviewer > div#data")[0].style.zIndex = -1001;
-    $(".tabs li").bind("click", (e) => {
-      if ($(e.target).hasClass("is-active")) {
+    $("#dataviewer > div#data").hide().css("z-index", "-1001");
+    $("#dataviewer > div#table").hide().css("z-index", "-1001");
+    $("#dataviewer > .tab-content").hide();
+    $("#dataviewer > div#map").show().css("z-index", "auto");
+    $(".tabs li").bind("click", function() {
+      const tab_li = $(this);
+      if (tab_li.hasClass("is-active")) {
         return;
-      } else {
-        $("#dataviewer > div#data")[0].style.zIndex =
-          -1 * $("#dataviewer > div#data")[0].style.zIndex;
-        $(".tabs li").toggleClass("is-active");
       }
+      const tab_name = tab_li.attr('class').replace(/is-active| /g,"");
+      $(".tabs li").removeClass("is-active");
+      tab_li.addClass("is-active");
+
+      $("#dataviewer > div#map").hide().css("z-index", "-1001");
+      $("#dataviewer > div#data").hide().css("z-index", "-1001");
+      $("#dataviewer > div#table").hide().css("z-index", "-1001");
+      $("#dataviewer > div.tab-content").hide();
+
+      if (tab_name === "Map") {
+        $("#dataviewer > div#map").show().css("z-index", "auto");
+        ide.map.invalidateSize(false);
+      } else if (tab_name === "Data") {
+        $("#dataviewer > div#data").show().css("z-index", "auto");
+        ide.dataViewer.refresh();
+      } else if (tab_name === "Table") {
+        $("#dataviewer > div#table").show().css("z-index", "auto");
+      }
+
     });
 
     // keyboard event listener
     $(document).keydown((event) => ide.onKeyPress(event));
+
+
 
     // leaflet extension: more map controls
     const MapButtons = L.Control.extend({
@@ -1057,12 +1128,26 @@ class IDE {
       ide.highlightError(linenumber);
     };
     overpass.handlers["onRawDataPresent"] = function () {
-      ide.dataViewer.setOption("mode", overpass.resultType);
+      // Map resultType to CodeMirror mode
+      let cmMode = "javascript";
+      if (overpass.resultType === "xml") {
+        cmMode = "application/xml";
+      } else if (overpass.resultType === "javascript") {
+        cmMode = "application/json";
+      }
+      
+      // Load the data in the background (without switching tabs)
+      // The data will be ready when user manually switches to Data tab
+      ide.dataViewer.setOption("mode", cmMode);
       ide.dataViewer.setValue(overpass.resultText);
+      // Note: refresh() will be called when user switches to Data tab
     };
     overpass.handlers["onGeoJsonReady"] = function () {
       // show layer
       ide.map.addLayer(overpass.osmLayer);
+
+      handleSuccessfulQuery(overpass.geojson);
+
       // autorun callback (e.g. zoom to data)
       if (typeof ide.run_query_on_startup === "function") {
         ide.run_query_on_startup();
@@ -1496,6 +1581,9 @@ class IDE {
   }
   onRerenderClick() {
     this.rerender_map();
+  }
+  onClearClick() {
+    this.codeEditor.setValue("");
   }
   compose_share_link(query, compression, coords, run) {
     const share_link = new URLSearchParams();
@@ -2401,6 +2489,710 @@ class IDE {
       }
     });
   }
+  
+  // Geo-Fingerprint Tool handlers
+  geoFingerprintClueCount = 0;
+  
+  // Common OSM tags with user-friendly labels
+  geoFingerprintTagKeys = [
+    {value: "amenity", label: "amenity (Places & Services)", desc: "Facilities like restaurants, schools, banks"},
+    {value: "shop", label: "shop (Retail Stores)", desc: "Any kind of shop or store"},
+    {value: "building", label: "building (Building Type)", desc: "Type of building structure"},
+    {value: "highway", label: "highway (Roads)", desc: "Roads and pathways"},
+    {value: "leisure", label: "leisure (Recreation)", desc: "Parks, playgrounds, sports facilities"},
+    {value: "tourism", label: "tourism (Tourist Spots)", desc: "Hotels, museums, attractions"},
+    {value: "natural", label: "natural (Natural Features)", desc: "Trees, water, peaks, etc."},
+    {value: "historic", label: "historic (Historical Sites)", desc: "Monuments, memorials, ruins"},
+    {value: "landuse", label: "landuse (Land Usage)", desc: "How land is used (residential, commercial, etc.)"},
+    {value: "name", label: "name (Name)", desc: "The name of the place"},
+    {value: "brand", label: "brand (Brand Name)", desc: "Brand name like McDonald's, Starbucks"},
+    {value: "cuisine", label: "cuisine (Food Type)", desc: "Type of cuisine (italian, chinese, etc.)"},
+    {value: "religion", label: "religion (Religion)", desc: "Religion of place of worship"}
+  ];
+  
+  geoFingerprintTagValues = {
+    amenity: [
+      {value: "restaurant", label: "restaurant (Restaurant)"},
+      {value: "cafe", label: "cafe (Coffee Shop/Cafe)"},
+      {value: "bar", label: "bar (Bar/Pub)"},
+      {value: "fast_food", label: "fast_food (Fast Food)"},
+      {value: "bank", label: "bank (Bank)"},
+      {value: "atm", label: "atm (ATM Machine)"},
+      {value: "post_office", label: "post_office (Post Office)"},
+      {value: "pharmacy", label: "pharmacy (Pharmacy)"},
+      {value: "hospital", label: "hospital (Hospital)"},
+      {value: "clinic", label: "clinic (Medical Clinic)"},
+      {value: "school", label: "school (School)"},
+      {value: "university", label: "university (University)"},
+      {value: "library", label: "library (Library)"},
+      {value: "police", label: "police (Police Station)"},
+      {value: "fire_station", label: "fire_station (Fire Station)"},
+      {value: "parking", label: "parking (Parking Lot)"},
+      {value: "fuel", label: "fuel (Gas Station)"},
+      {value: "charging_station", label: "charging_station (EV Charging)"},
+      {value: "place_of_worship", label: "place_of_worship (Church/Temple/Mosque)"},
+      {value: "drinking_water", label: "drinking_water (Drinking Water Fountain)"},
+      {value: "toilets", label: "toilets (Public Toilets)"},
+      {value: "bench", label: "bench (Bench)"},
+      {value: "waste_basket", label: "waste_basket (Trash Can)"}
+    ],
+    shop: [
+      {value: "supermarket", label: "supermarket (Supermarket)"},
+      {value: "convenience", label: "convenience (Convenience Store)"},
+      {value: "bakery", label: "bakery (Bakery)"},
+      {value: "butcher", label: "butcher (Butcher Shop)"},
+      {value: "clothes", label: "clothes (Clothing Store)"},
+      {value: "hairdresser", label: "hairdresser (Hair Salon)"},
+      {value: "car_repair", label: "car_repair (Auto Repair)"},
+      {value: "bicycle", label: "bicycle (Bike Shop)"},
+      {value: "florist", label: "florist (Flower Shop)"},
+      {value: "furniture", label: "furniture (Furniture Store)"},
+      {value: "electronics", label: "electronics (Electronics Store)"},
+      {value: "books", label: "books (Book Store)"},
+      {value: "jewelry", label: "jewelry (Jewelry Store)"},
+      {value: "mobile_phone", label: "mobile_phone (Phone Store)"}
+    ],
+    building: [
+      {value: "house", label: "house (House)"},
+      {value: "residential", label: "residential (Residential Building)"},
+      {value: "apartments", label: "apartments (Apartment Building)"},
+      {value: "commercial", label: "commercial (Commercial Building)"},
+      {value: "retail", label: "retail (Retail Building)"},
+      {value: "industrial", label: "industrial (Industrial Building)"},
+      {value: "warehouse", label: "warehouse (Warehouse)"},
+      {value: "church", label: "church (Church Building)"},
+      {value: "mosque", label: "mosque (Mosque Building)"},
+      {value: "temple", label: "temple (Temple Building)"},
+      {value: "school", label: "school (School Building)"},
+      {value: "hospital", label: "hospital (Hospital Building)"}
+    ],
+    leisure: [
+      {value: "park", label: "park (Public Park)"},
+      {value: "playground", label: "playground (Playground)"},
+      {value: "sports_centre", label: "sports_centre (Sports Center)"},
+      {value: "stadium", label: "stadium (Stadium)"},
+      {value: "pitch", label: "pitch (Sports Field)"},
+      {value: "swimming_pool", label: "swimming_pool (Swimming Pool)"},
+      {value: "garden", label: "garden (Garden)"},
+      {value: "dog_park", label: "dog_park (Dog Park)"}
+    ],
+    tourism: [
+      {value: "hotel", label: "hotel (Hotel)"},
+      {value: "hostel", label: "hostel (Hostel)"},
+      {value: "museum", label: "museum (Museum)"},
+      {value: "attraction", label: "attraction (Tourist Attraction)"},
+      {value: "viewpoint", label: "viewpoint (Scenic Viewpoint)"},
+      {value: "information", label: "information (Tourist Information)"}
+    ],
+    highway: [
+      {value: "motorway", label: "motorway (Highway/Freeway)"},
+      {value: "primary", label: "primary (Major Road)"},
+      {value: "secondary", label: "secondary (Secondary Road)"},
+      {value: "residential", label: "residential (Residential Street)"},
+      {value: "footway", label: "footway (Sidewalk/Footpath)"},
+      {value: "cycleway", label: "cycleway (Bike Path)"},
+      {value: "bus_stop", label: "bus_stop (Bus Stop)"}
+    ],
+    natural: [
+      {value: "water", label: "water (Body of Water)"},
+      {value: "wood", label: "wood (Forest/Woods)"},
+      {value: "tree", label: "tree (Tree)"},
+      {value: "peak", label: "peak (Mountain Peak)"},
+      {value: "beach", label: "beach (Beach)"},
+      {value: "spring", label: "spring (Natural Spring)"}
+    ],
+    historic: [
+      {value: "monument", label: "monument (Monument)"},
+      {value: "memorial", label: "memorial (Memorial)"},
+      {value: "castle", label: "castle (Castle)"},
+      {value: "ruins", label: "ruins (Ruins)"},
+      {value: "archaeological_site", label: "archaeological_site (Archaeological Site)"},
+      {value: "wayside_cross", label: "wayside_cross (Wayside Cross)"},
+      {value: "wayside_shrine", label: "wayside_shrine (Wayside Shrine)"},
+      {value: "battlefield", label: "battlefield (Battlefield)"},
+      {value: "fort", label: "fort (Fort)"},
+      {value: "city_gate", label: "city_gate (City Gate)"}
+    ],
+    landuse: [
+      {value: "residential", label: "residential (Residential Area)"},
+      {value: "commercial", label: "commercial (Commercial Area)"},
+      {value: "industrial", label: "industrial (Industrial Area)"},
+      {value: "retail", label: "retail (Retail Area)"},
+      {value: "forest", label: "forest (Managed Forest)"},
+      {value: "farmland", label: "farmland (Farmland)"},
+      {value: "meadow", label: "meadow (Meadow)"},
+      {value: "grass", label: "grass (Grass)"},
+      {value: "orchard", label: "orchard (Orchard)"},
+      {value: "vineyard", label: "vineyard (Vineyard)"},
+      {value: "cemetery", label: "cemetery (Cemetery)"},
+      {value: "recreation_ground", label: "recreation_ground (Recreation Ground)"}
+    ],
+    cuisine: [
+      {value: "pizza", label: "pizza (Pizza)"},
+      {value: "italian", label: "italian (Italian)"},
+      {value: "chinese", label: "chinese (Chinese)"},
+      {value: "indian", label: "indian (Indian)"},
+      {value: "mexican", label: "mexican (Mexican)"},
+      {value: "japanese", label: "japanese (Japanese)"},
+      {value: "thai", label: "thai (Thai)"},
+      {value: "burger", label: "burger (Burger)"},
+      {value: "kebab", label: "kebab (Kebab)"},
+      {value: "sushi", label: "sushi (Sushi)"},
+      {value: "french", label: "french (French)"},
+      {value: "german", label: "german (German)"},
+      {value: "american", label: "american (American)"},
+      {value: "seafood", label: "seafood (Seafood)"},
+      {value: "vegetarian", label: "vegetarian (Vegetarian)"},
+      {value: "vegan", label: "vegan (Vegan)"}
+    ],
+    religion: [
+      {value: "christian", label: "christian (Christian)"},
+      {value: "muslim", label: "muslim (Muslim)"},
+      {value: "jewish", label: "jewish (Jewish)"},
+      {value: "hindu", label: "hindu (Hindu)"},
+      {value: "buddhist", label: "buddhist (Buddhist)"},
+      {value: "sikh", label: "sikh (Sikh)"},
+      {value: "shinto", label: "shinto (Shinto)"},
+      {value: "taoist", label: "taoist (Taoist)"}
+    ],
+    brand: [
+      {value: "McDonald's", label: "McDonald's"},
+      {value: "Starbucks", label: "Starbucks"},
+      {value: "Subway", label: "Subway"},
+      {value: "KFC", label: "KFC"},
+      {value: "Burger King", label: "Burger King"},
+      {value: "Pizza Hut", label: "Pizza Hut"},
+      {value: "Domino's", label: "Domino's"},
+      {value: "Tesco", label: "Tesco"},
+      {value: "Walmart", label: "Walmart"},
+      {value: "Lidl", label: "Lidl"},
+      {value: "Aldi", label: "Aldi"},
+      {value: "Carrefour", label: "Carrefour"},
+      {value: "7-Eleven", label: "7-Eleven"},
+      {value: "Shell", label: "Shell"},
+      {value: "BP", label: "BP"},
+      {value: "Exxon", label: "Exxon"}
+    ],
+    name: []
+  };
+  
+  onGeoFingerprintClick() {
+    $("#geo-fingerprint-dialog").addClass("is-active");
+    // Initialize with one empty clue
+    $("#geo-fp-clues-container").empty();
+    this.geoFingerprintClueCount = 0;
+    this.onGeoFingerprintAddClue();
+    
+    // Bind preset buttons
+    $("[data-preset]").off("click").on("click", (e) => {
+      const preset = $(e.currentTarget).data("preset");
+      this.loadGeoFingerprintPreset(preset);
+    });
+  }
+  
+  loadGeoFingerprintPreset(preset) {
+    // Clear existing clues
+    $("#geo-fp-clues-container").empty();
+    this.geoFingerprintClueCount = 0;
+    
+    const presets = {
+      "post-office-supermarket": [
+        {key: "amenity", value: "post_office"},
+        {key: "shop", value: "supermarket"}
+      ],
+      "cafe-park": [
+        {key: "amenity", value: "cafe"},
+        {key: "leisure", value: "park"}
+      ],
+      "gas-station-highway": [
+        {key: "amenity", value: "fuel"},
+        {key: "highway", value: "primary"}
+      ],
+      "atm-restaurant": [
+        {key: "amenity", value: "atm"},
+        {key: "amenity", value: "restaurant"}
+      ]
+    };
+    
+    const presetData = presets[preset];
+    if (!presetData) return;
+    
+    // Add clues for this preset
+    presetData.forEach((clue, index) => {
+      this.onGeoFingerprintAddClue();
+      const clueId = this.geoFingerprintClueCount;
+      
+      // Set the values
+      setTimeout(() => {
+        const keyInput = $(`.geo-fp-clue[data-clue-id="${clueId}"] .geo-fp-key-input`).first();
+        const valueInput = $(`.geo-fp-clue[data-clue-id="${clueId}"] .geo-fp-value-input`).first();
+        
+        keyInput.val(clue.key);
+        valueInput.val(clue.value);
+        
+        // Update the value autocomplete
+        if (this.geoFingerprintTagValues[clue.key]) {
+          valueInput.autocomplete("option", "source", this.geoFingerprintTagValues[clue.key]);
+        }
+      }, 50 * index);
+    });
+  }
+  
+  onGeoFingerprintClose() {
+    $("#geo-fingerprint-dialog").removeClass("is-active");
+  }
+  
+  onGeoFingerprintAddClue() {
+    this.geoFingerprintClueCount++;
+    const clueId = this.geoFingerprintClueCount;
+    
+    // Calculate display number based on actual clue count
+    const displayNumber = $("#geo-fp-clues-container .geo-fp-clue").length + 1;
+    
+    const clueHtml = `
+      <div class="geo-fp-clue" data-clue-id="${clueId}">
+        <button class="delete" data-clue-delete="${clueId}"></button>
+        <div class="geo-fp-clue-number">Clue ${displayNumber}</div>
+        
+        <!-- Tag key-value pairs -->
+        <div class="geo-fp-tags" data-clue-tags="${clueId}">
+          <div class="geo-fp-tag-row">
+            <div class="field control">
+              <label class="label is-small">What are you looking for?</label>
+              <input class="input is-small geo-fp-key-input" type="text" placeholder="Type to search: amenity, shop, building..." />
+            </div>
+            <div class="field control">
+              <label class="label is-small">Specific type</label>
+              <input class="input is-small geo-fp-value-input" type="text" placeholder="restaurant, cafe, bank..." />
+            </div>
+            <div class="field control" style="flex: 0.3;">
+              <label class="label is-small">&nbsp;</label>
+              <button class="button is-small is-danger delete-tag" style="opacity: 0.3;" disabled>
+                <span class="icon is-small">
+                  <span class="fas fa-times"></span>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <button class="button is-small is-light geo-fp-add-tag" data-add-tag="${clueId}">
+          <span class="icon is-small">
+            <span class="fas fa-plus"></span>
+          </span>
+          <span>Add Tag</span>
+        </button>
+        
+        ${clueId > 1 ? `
+        <div class="field" style="margin-top: 0.75rem;">
+          <label class="label is-small" style="color: #2366d1; font-weight: 600;">Spatial Relationship</label>
+          <div class="control">
+            <div class="select is-small is-fullwidth">
+              <select class="geo-fp-relationship">
+                <option value="around">Around (within radius)</option>
+                <option value="around-tight">Near (within 50m)</option>
+                <option value="attached">Attached/Touching</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        ` : ''}
+      </div>
+    `;
+    
+    $("#geo-fp-clues-container").append(clueHtml);
+    
+    // Initialize autocomplete for tag key input
+    const keyInput = $(`.geo-fp-clue[data-clue-id="${clueId}"] .geo-fp-key-input`).first();
+    keyInput.autocomplete({
+      source: this.geoFingerprintTagKeys,
+      minLength: 0,
+      select: (event, ui) => {
+        // When a key is selected, update the value input's autocomplete
+        const valueInput = keyInput.closest(".geo-fp-tag-row").find(".geo-fp-value-input");
+        const selectedKey = ui.item.value;
+        
+        // Set the actual tag key (without the label)
+        keyInput.val(selectedKey);
+        
+        // Update value autocomplete based on selected key
+        if (this.geoFingerprintTagValues[selectedKey]) {
+          valueInput.autocomplete("option", "source", this.geoFingerprintTagValues[selectedKey]);
+        } else {
+          valueInput.autocomplete("option", "source", []);
+        }
+        valueInput.focus();
+        return false;
+      }
+    }).focus(function() {
+      $(this).autocomplete("search", $(this).val());
+    });
+    
+    // Initialize autocomplete for tag value input (initially empty)
+    const valueInput = $(`.geo-fp-clue[data-clue-id="${clueId}"] .geo-fp-value-input`).first();
+    valueInput.autocomplete({
+      source: [],
+      minLength: 0,
+      select: (event, ui) => {
+        valueInput.val(ui.item.value);
+        return false;
+      }
+    }).focus(function() {
+      $(this).autocomplete("search", $(this).val());
+    });
+    
+    // Update value autocomplete when key input changes
+    keyInput.on("change blur", () => {
+      const key = keyInput.val().toString().trim();
+      if (this.geoFingerprintTagValues[key]) {
+        valueInput.autocomplete("option", "source", this.geoFingerprintTagValues[key]);
+      } else {
+        valueInput.autocomplete("option", "source", []);
+      }
+    });
+    
+    // Bind delete clue button
+    $(`[data-clue-delete="${clueId}"]`).on("click", () => {
+      $(`.geo-fp-clue[data-clue-id="${clueId}"]`).remove();
+      // Renumber remaining clues
+      this.renumberGeoFingerprintClues();
+    });
+    
+    // Bind add tag button
+    $(`[data-add-tag="${clueId}"]`).on("click", () => {
+      const tagRow = `
+        <div class="geo-fp-tag-row">
+          <div class="field control">
+            <input class="input is-small geo-fp-key-input" type="text" placeholder="e.g., name, brand" />
+          </div>
+          <div class="field control">
+            <input class="input is-small geo-fp-value-input" type="text" placeholder="e.g., Lidl, Starbucks" />
+          </div>
+          <div class="field control" style="flex: 0.3;">
+            <button class="button is-small is-danger delete-tag">
+              <span class="icon is-small">
+                <span class="fas fa-times"></span>
+              </span>
+            </button>
+          </div>
+        </div>
+      `;
+      $(`.geo-fp-tags[data-clue-tags="${clueId}"]`).append(tagRow);
+      
+      const newKeyInput = $(`.geo-fp-tags[data-clue-tags="${clueId}"] .geo-fp-key-input`).last();
+      const newValueInput = $(`.geo-fp-tags[data-clue-tags="${clueId}"] .geo-fp-value-input`).last();
+      
+      // Initialize autocomplete for the new row
+      newKeyInput.autocomplete({
+        source: this.geoFingerprintTagKeys,
+        minLength: 0,
+        select: (event, ui) => {
+          newKeyInput.val(ui.item.value);
+          const selectedKey = ui.item.value;
+          
+          if (this.geoFingerprintTagValues[selectedKey]) {
+            newValueInput.autocomplete("option", "source", this.geoFingerprintTagValues[selectedKey]);
+          } else {
+            newValueInput.autocomplete("option", "source", []);
+          }
+          newValueInput.focus();
+          return false;
+        }
+      }).focus(function() {
+        $(this).autocomplete("search", $(this).val());
+      });
+      
+      newValueInput.autocomplete({
+        source: [],
+        minLength: 0,
+        select: (event, ui) => {
+          newValueInput.val(ui.item.value);
+          return false;
+        }
+      }).focus(function() {
+        $(this).autocomplete("search", $(this).val());
+      });
+      
+      newKeyInput.on("change blur", () => {
+        const key = newKeyInput.val().toString().trim();
+        if (this.geoFingerprintTagValues[key]) {
+          newValueInput.autocomplete("option", "source", this.geoFingerprintTagValues[key]);
+        } else {
+          newValueInput.autocomplete("option", "source", []);
+        }
+      });
+      
+      // Bind delete tag button for the new row
+      $(`.geo-fp-tags[data-clue-tags="${clueId}"] .delete-tag`).last().on("click", function() {
+        $(this).closest(".geo-fp-tag-row").remove();
+      });
+    });
+    
+    // Bind delete tag buttons for existing rows
+    $(`.geo-fp-tags[data-clue-tags="${clueId}"] .delete-tag`).on("click", function() {
+      $(this).closest(".geo-fp-tag-row").remove();
+    });
+  }
+  
+  renumberGeoFingerprintClues() {
+    // Renumber all visible clues sequentially
+    $("#geo-fp-clues-container .geo-fp-clue").each((index, clue) => {
+      $(clue).find(".geo-fp-clue-number").text(`Clue ${index + 1}`);
+    });
+  }
+  
+  onGeoFingerprintBuild() {
+    const query = this.buildGeoFingerprintQuery();
+    if (query) {
+      this.setQuery(query);
+      $("#geo-fingerprint-dialog").removeClass("is-active");
+    }
+  }
+  
+  onGeoFingerprintRun() {
+    const query = this.buildGeoFingerprintQuery();
+    if (query) {
+      this.setQuery(query);
+      $("#geo-fingerprint-dialog").removeClass("is-active");
+      this.onRunClick();
+    }
+  }
+  
+  // Query History handlers
+  onQueryHistoryClick() {
+    $("#query-history-dialog").addClass("is-active");
+    this.loadQueryHistory();
+  }
+  
+  onQueryHistoryClose() {
+    $("#query-history-dialog").removeClass("is-active");
+  }
+  
+  onQueryHistoryClear() {
+    if (confirm("Are you sure you want to clear all query history? This cannot be undone.")) {
+      localStorage.removeItem("overpass_turbo_query_history");
+      this.loadQueryHistory();
+    }
+  }
+  
+  saveQueryToHistory(query: string) {
+    if (!query || query.trim().length === 0) return;
+    
+    try {
+      // Get existing history
+      const historyJson = localStorage.getItem("overpass_turbo_query_history");
+      let history: Array<{query: string, timestamp: number}> = historyJson ? JSON.parse(historyJson) : [];
+      
+      // Don't save if it's identical to the last query
+      if (history.length > 0 && history[0].query === query) return;
+      
+      // Add new query to the beginning
+      history.unshift({
+        query: query,
+        timestamp: Date.now()
+      });
+      
+      // Keep only last 30 queries
+      history = history.slice(0, 30);
+      
+      // Save back to localStorage
+      localStorage.setItem("overpass_turbo_query_history", JSON.stringify(history));
+    } catch (e) {
+      console.error("Failed to save query to history:", e);
+    }
+  }
+  
+  loadQueryHistory() {
+    try {
+      const historyJson = localStorage.getItem("overpass_turbo_query_history");
+      const history: Array<{query: string, timestamp: number}> = historyJson ? JSON.parse(historyJson) : [];
+      
+      const container = $("#query-history-list");
+      const emptyMessage = $("#query-history-empty");
+      
+      container.empty();
+      
+      if (history.length === 0) {
+        emptyMessage.show();
+        return;
+      }
+      
+      emptyMessage.hide();
+      
+      history.forEach((item, index) => {
+        const date = new Date(item.timestamp);
+        const timeStr = this.formatHistoryTime(date);
+        
+        // Create preview of query (first 100 chars)
+        const preview = item.query.length > 100 
+          ? item.query.substring(0, 100) + "..." 
+          : item.query;
+        
+        const historyItem = $(`
+          <div class="box" style="margin-bottom: 0.75rem; cursor: pointer; transition: all 0.2s;" data-history-index="${index}">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div style="flex: 1;">
+                <div style="color: #363636; font-weight: 600; margin-bottom: 0.25rem;">
+                  <span class="icon is-small" style="color: #2366d1;">
+                    <i class="fas fa-code"></i>
+                  </span>
+                  Query #${history.length - index}
+                </div>
+                <pre style="background: #f5f5f5; padding: 0.5rem; border-radius: 4px; font-size: 0.85rem; color: #4a4a4a; margin-bottom: 0.5rem; overflow-x: auto;">${this.escapeHtml(preview)}</pre>
+                <small style="color: #888;">
+                  <i class="fas fa-clock"></i> ${timeStr}
+                </small>
+              </div>
+              <button class="button is-small is-danger is-light delete-history" data-delete-index="${index}" style="margin-left: 0.5rem;">
+                <span class="icon is-small">
+                  <i class="fas fa-trash"></i>
+                </span>
+              </button>
+            </div>
+          </div>
+        `);
+        
+        // Load query on click
+        historyItem.on("click", (e) => {
+          if (!$(e.target).closest(".delete-history").length) {
+            this.setQuery(item.query);
+            $("#query-history-dialog").removeClass("is-active");
+          }
+        });
+        
+        // Delete individual item
+        historyItem.find(".delete-history").on("click", (e) => {
+          e.stopPropagation();
+          this.deleteHistoryItem(index);
+        });
+        
+        container.append(historyItem);
+      });
+    } catch (e) {
+      console.error("Failed to load query history:", e);
+    }
+  }
+  
+  deleteHistoryItem(index: number) {
+    try {
+      const historyJson = localStorage.getItem("overpass_turbo_query_history");
+      let history: Array<{query: string, timestamp: number}> = historyJson ? JSON.parse(historyJson) : [];
+      
+      history.splice(index, 1);
+      
+      localStorage.setItem("overpass_turbo_query_history", JSON.stringify(history));
+      this.loadQueryHistory();
+    } catch (e) {
+      console.error("Failed to delete history item:", e);
+    }
+  }
+  
+  formatHistoryTime(date: Date): string {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? '' : 's'} ago`;
+    if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+    if (diffDays < 7) return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    
+    return date.toLocaleDateString();
+  }
+  
+  escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  buildGeoFingerprintQuery() {
+    const clues = [];
+    const radius = $("#geo-fp-radius").val() || "200";
+    
+    // Collect all clues
+    $(".geo-fp-clue").each(function() {
+      const clueId = $(this).data("clue-id");
+      const tags = [];
+      
+      // Collect all tag key-value pairs for this clue
+      $(this).find(".geo-fp-tag-row").each(function() {
+        const key = $(this).find("input").eq(0).val();
+        const value = $(this).find("input").eq(1).val();
+        if (key && value) {
+          tags.push({key: key, value: value});
+        }
+      });
+      
+      if (tags.length > 0) {
+        const relationship = $(this).find(".geo-fp-relationship").val() || "around";
+        clues.push({
+          id: clueId,
+          tags: tags,
+          relationship: relationship
+        });
+      }
+    });
+    
+    if (clues.length === 0) {
+      alert("Please add at least one clue with tag information.");
+      return null;
+    }
+    
+    // Build the Overpass QL query
+    let query = "[out:json][timeout:25];\n";
+    query += "(\n";
+    
+    if (clues.length === 1) {
+      // Simple query for single clue
+      const clue = clues[0];
+      for (const tag of clue.tags) {
+        query += `  node["${tag.key}"="${tag.value}"]({{bbox}});\n`;
+        query += `  way["${tag.key}"="${tag.value}"]({{bbox}});\n`;
+        query += `  relation["${tag.key}"="${tag.value}"]({{bbox}});\n`;
+      }
+    } else {
+      // Complex query with spatial relationships
+      // First clue (anchor)
+      const firstClue = clues[0];
+      const firstTags = firstClue.tags.map(t => `["${t.key}"="${t.value}"]`).join("");
+      
+      // Build the around query
+      query += `  node${firstTags}({{bbox}})->.anchor;\n`;
+      query += `  way${firstTags}({{bbox}})->.anchor;\n`;
+      query += `  relation${firstTags}({{bbox}})->.anchor;\n`;
+      
+      // Add subsequent clues with spatial relationships
+      for (let i = 1; i < clues.length; i++) {
+        const clue = clues[i];
+        const clueTags = clue.tags.map(t => `["${t.key}"="${t.value}"]`).join("");
+        
+        let searchRadius = radius;
+        if (clue.relationship === "around-tight") {
+          searchRadius = "50";
+        } else if (clue.relationship === "attached") {
+          searchRadius = "10";
+        }
+        
+        query += `  (\n`;
+        query += `    node${clueTags}(around.anchor:${searchRadius});\n`;
+        query += `    way${clueTags}(around.anchor:${searchRadius});\n`;
+        query += `    relation${clueTags}(around.anchor:${searchRadius});\n`;
+        query += `  )->.clue${i};\n`;
+      }
+      
+      // Get the anchor points that have all required clues nearby
+      query += `  .anchor;\n`;
+    }
+    
+    query += ");\n";
+    query += "out center;\n";
+    
+    return query;
+  }
+  
   onStylerClick() {
     if (!overpass.geojson || overpass.geojson.features.length === 0) return;
     $("#styler-dialog").addClass("is-active");
@@ -2720,6 +3512,16 @@ class IDE {
       event.preventDefault();
     }
     if (
+      event.key == "H" &&
+      (event.ctrlKey || event.metaKey) &&
+      event.shiftKey &&
+      !event.altKey
+    ) {
+      // Ctrl+Shift+H
+      this.onQueryHistoryClick();
+      event.preventDefault();
+    }
+    if (
       (event.key == "i" &&
         (event.ctrlKey || event.metaKey) &&
         !event.shiftKey &&
@@ -2731,6 +3533,16 @@ class IDE {
     ) {
       // Ctrl+I or Ctrl+Shift+F
       this.onFfsClick();
+      event.preventDefault();
+    }
+    if (
+      event.key == "g" &&
+      (event.ctrlKey || event.metaKey) &&
+      !event.shiftKey &&
+      !event.altKey
+    ) {
+      // Ctrl+G
+      this.onGeoFingerprintClick();
       event.preventDefault();
     }
     if (
@@ -2768,6 +3580,10 @@ class IDE {
     this.waiter.addInfo("building query");
     // run the query via the overpass object
     const query = await this.getQuery();
+    
+    // Save query to history
+    this.saveQueryToHistory(this.getRawQuery());
+    
     if (configs.push_history_url && typeof history.pushState == "function") {
       const url = this.compose_share_link(this.getRawQuery(), true);
       if (url.length > 2000) {

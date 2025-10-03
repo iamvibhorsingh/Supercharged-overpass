@@ -7,18 +7,30 @@
       lang="en"
     />
     <meta name="viewport" content="width=device-width" />
-    <title>overpass turbo</title>
+    <title>Supercharged Overpass - Enhanced OSM Query Tool</title>
+    <link rel="icon" href="turbo.svg" type="image/svg+xml" />
     <!-- https://developers.facebook.com/docs/sharing/webmasters -->
-    <meta property="og:title" content="overpass turbo" />
+    <meta property="og:title" content="Supercharged Overpass - Enhanced OSM Query Tool" />
     <meta
       property="og:description"
-      content="A web based data mining tool for OpenStreetMap which runs any kind of Overpass API query and shows the results on an interactive map."
+      content="Supercharged Overpass: An enhanced OSM query tool with Geo-Fingerprint, Query History, and Street View integration. Built on overpass turbo. Perfect for GeoGuessr players!"
     />
   </head>
   <body>
     <!-- Layout -->
-    <nav class="navbar is-light" role="navigation" aria-label="main navigation">
-      <div class="navbar-start">
+    <nav class="navbar is-light" role="navigation" aria-label="main navigation" style="flex-wrap: wrap;">
+      <div class="navbar-brand">
+        <a class="navbar-item" href="index.html">
+          <strong style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">Supercharged</strong> overpass
+          <img
+            src="turbo.svg"
+            style="margin-top: -8px"
+            alt="Supercharged Overpass logo"
+          />
+        </a>
+      </div>
+      
+      <div class="navbar-start" style="flex: 1; overflow-x: auto;">
         <div class="navbar-item">
           <div class="buttons has-addons">
             <button
@@ -45,6 +57,18 @@
               <span class="icon">
                 <span class="fas fa-sync-alt"></span>
               </span>
+            </button>
+            <button
+              class="t button"
+              accesskey=""
+              data-ide-handler="click:onClearClick"
+              title=""
+              data-t="[title]nav.clear_tt"
+            >
+              <span class="icon">
+                <span class="fas fa-trash"></span>
+              </span>
+              <span class="t" data-t="nav.clear">Clear</span>
             </button>
             <button
               class="t button"
@@ -89,6 +113,18 @@
               <span class="t" data-t="nav.wizard">Wizard</span>
             </button>
             <button
+              class="button"
+              accesskey="5"
+              data-ide-handler="click:onGeoFingerprintClick"
+              title="Find locations by combining visual clues"
+              data-shortcut="Ctrl+G"
+            >
+              <span class="icon">
+                <span class="fas fa-map-marker-alt"></span>
+              </span>
+              <span>Geo-Fingerprint</span>
+            </button>
+            <button
               class="t button"
               accesskey=""
               data-ide-handler="click:onStylerClick"
@@ -106,6 +142,17 @@
         </div>
         <div class="navbar-item">
           <div class="buttons has-addons">
+            <button
+              class="button"
+              data-ide-handler="click:onQueryHistoryClick"
+              title="View recent queries"
+              data-shortcut="Ctrl+Shift+H"
+            >
+              <span class="icon">
+                <span class="fas fa-history"></span>
+              </span>
+              <span>History</span>
+            </button>
             <button
               class="t button"
               accesskey="5"
@@ -174,18 +221,17 @@
               </span>
               <span class="t" data-t="nav.help">Help</span>
             </button>
+            <a
+              class="button is-success is-light"
+              href="quiz.html"
+              title="Test your GeoGuessr skills with OSM data"
+            >
+              <span class="icon">
+                <span class="fas fa-trophy"></span>
+              </span>
+              <span>Quiz Mode</span>
+            </a>
           </div>
-        </div>
-
-        <div class="navbar-brand">
-          <a class="navbar-item" href="index.html">
-            overpass turbo
-            <img
-              src="turbo.svg"
-              style="margin-top: -8px"
-              alt="overpass turbo logo"
-            />
-          </a>
         </div>
       </div>
 
@@ -203,6 +249,8 @@
                   Data
                 </a>
               </li>
+              <li class="Table"><a href="#table" data-t="nav.table">Table</a></li>
+
             </ul>
           </div>
         </div>
@@ -216,6 +264,10 @@
     <div id="dataviewer">
       <div id="map"></div>
       <div id="data"></div>
+      <div id="table">
+        <div id="table-container"></div>
+      </div>
+
     </div>
 
     <!-- Wait spinner -->
@@ -225,7 +277,7 @@
         <div class="box">
           <progress class="progress is-small is-dark" max="100"></progress>
           <div class="wait-info">
-            <h4>overpass turbo loading...</h4>
+            <h4>Supercharged Overpass loading...</h4>
             <ul class="plain"></ul>
           </div>
         </div>
@@ -252,132 +304,226 @@
         </header>
         <section class="modal-card-body">
           <div class="content">
-            <h3 class="t" data-t="help.section.introduction"></h3>
-            <div class="content">
-              <p class="t" data-t="[html]help.intro.0"></p>
-              <p>
-                <span class="t" data-t="[html]help.intro.1"></span>
-                <span class="t" data-t="[html]help.intro.1b"></span>
+            <div class="notification is-info is-light">
+              <h3 style="color: #2366d1;"><strong>🚀 Supercharged Overpass</strong></h3>
+              <p style="margin-bottom: 0.5rem; color: #363636;">
+                This is <strong>Supercharged Overpass</strong>, an enhanced version of <a href="https://overpass-turbo.eu" target="_blank">overpass turbo</a> 
+                with powerful new features for GeoGuessr players and OSM enthusiasts. Made by <a href="https://vibhorsingh.com" target="_blank">Vibhor Singh</a>.
               </p>
-              <p class="t" data-t="[html]help.intro.2"></p>
+              <p style="margin-bottom: 0; color: #363636;">
+                <strong>New Features:</strong> Geo-Fingerprint Tool, Query History, Street View Integration, Quiz Mode
+              </p>
             </div>
-            <h3 class="t" data-t="help.section.queries"></h3>
+            
+            <h3>Introduction</h3>
+            <div class="content">
+              <p>
+                <strong>Supercharged Overpass</strong> is an enhanced web-based data mining tool for 
+                <a href="https://www.openstreetmap.org" target="_blank">OpenStreetMap</a>. 
+                It's supercharged with features designed for GeoGuessr players and location enthusiasts.
+              </p>
+              <p>
+                With Supercharged Overpass, you can run <a href="https://wiki.openstreetmap.org/wiki/Overpass_API" target="_blank">Overpass API</a> 
+                queries and analyze the resulting OSM data interactively on a map. Plus, you get powerful new tools like 
+                Geo-Fingerprint for visual location searches and integrated Street View for instant verification.
+              </p>
+              <p>
+                Built on the foundation of <a href="https://overpass-turbo.eu" target="_blank">overpass turbo</a> 
+                by Martin Raifer, this enhanced version maintains full compatibility while adding game-changing features.
+                Learn more about <a href="https://wiki.openstreetmap.org/wiki/Overpass_API/Overpass_QL" target="_blank">Overpass queries</a> 
+                in the OSM wiki.
+              </p>
+            </div>
+            <h3>Overpass Queries</h3>
             <div>
-              <p class="t" data-t="[html]help.queries.expl"></p>
-              <p class="t" data-t="help.intro.shortcuts"></p>
+              <p>
+                Overpass API allows you to query for OSM data using your own search criteria. 
+                It has a specifically crafted <a href="https://wiki.openstreetmap.org/wiki/Overpass_API/Overpass_QL" target="_blank">query language</a>.
+              </p>
+              <p>In addition to regular Overpass API queries, you can use these handy shortcuts in Supercharged Overpass:</p>
               <ul>
                 <li>
                   <code>{{bbox}}</code> &mdash;
-                  <span class="t" data-t="help.intro.shortcuts.bbox"></span>
+                  bounding box coordinates of the current map view
                 </li>
                 <li>
                   <code>{{center}}</code> &mdash;
-                  <span class="t" data-t="help.intro.shortcuts.center"></span>
+                  map center coordinates
                 </li>
                 <li>
                   <code>{{date:…}}</code> &mdash;
-                  <span class="t" data-t="help.intro.shortcuts.date"></span>
+                  ISO 8601 date-time-string a certain time interval ago (e.g. "24 hours")
                 </li>
                 <li>
                   <code>{{style:…}}</code> &mdash;
-                  <span
-                    class="t"
-                    data-t="[html]help.intro.shortcuts.style"
-                  ></span>
+                  defines a <a href="https://wiki.openstreetmap.org/wiki/Overpass_turbo/MapCSS" target="_blank">MapCSS stylesheet</a>
                 </li>
-                <li class="t" data-t="[html]help.intro.shortcuts.custom"></li>
+                <li>
+                  Arbitrary shortcuts can be defined by putting <i>{{shortcut=value}}</i> somewhere in the script.
+                </li>
               </ul>
-              <p class="t" data-t="[html]help.intro.shortcuts.more"></p>
+              <p>
+                More shortcuts and usage examples can be found in the 
+                <a href="https://wiki.openstreetmap.org/wiki/Overpass_turbo/Extended_Overpass_Queries" target="_blank">OSM wiki</a>.
+              </p>
             </div>
-            <h3 class="t" data-t="help.section.ide"></h3>
+            <h3>Using Supercharged Overpass</h3>
             <div>
-              <h4 class="t" data-t="help.ide.share.title"></h4>
-              <p class="t" data-t="[html]help.ide.share.expl"></p>
-              <h4 class="t" data-t="help.ide.save_load.title"></h4>
-              <p class="t" data-t="[html]help.ide.save_load.expl"></p>
-              <h4 class="t" data-t="help.ide.keyboard.title"></h4>
+              <h4>Sharing</h4>
+              <p>
+                You can share your queries by using the <em>Share</em> tool. It provides a link with the 
+                current map state and query. If <em>include current map state</em> is enabled, the current 
+                zoom level and map center will also be shared.
+              </p>
+              <h4>Saving & Loading</h4>
+              <p>
+                Use the <em>Save</em> and <em>Load</em> buttons to manage your queries. Queries are automatically 
+                saved to your Query History (last 30 queries). You can also save queries to your OSM account 
+                or export them as files.
+              </p>
+              <h4>Keyboard Shortcuts</h4>
               <ul>
                 <li>
                   <kbd>Ctrl</kbd>+<kbd>Enter</kbd> &mdash;
-                  <span class="t" data-t="help.ide.keyboard.run"></span>
+                  Run the current query
                 </li>
                 <li>
                   <kbd>Ctrl</kbd>+<kbd>I</kbd> &mdash;
-                  <span class="t" data-t="help.ide.keyboard.wizard"></span>
+                  Open the Query Wizard
                 </li>
                 <li>
-                  <kbd>Ctrl</kbd>+<kbd>O</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd>
-                  &mdash;
-                  <span class="t" data-t="help.ide.keyboard.load_save"></span>
+                  <kbd>Ctrl</kbd>+<kbd>G</kbd> &mdash;
+                  Open Geo-Fingerprint Tool (NEW!)
+                </li>
+                <li>
+                  <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> &mdash;
+                  Open Query History (NEW!)
+                </li>
+                <li>
+                  <kbd>Ctrl</kbd>+<kbd>K</kbd> &mdash;
+                  Style results by tag
+                </li>
+                <li>
+                  <kbd>Ctrl</kbd>+<kbd>O</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd> &mdash;
+                  Load / Save queries
                 </li>
                 <li>
                   <kbd>Ctrl</kbd>+<kbd>H</kbd> &mdash;
-                  <span class="t" data-t="help.ide.keyboard.help"></span>
+                  Show this help dialog
                 </li>
               </ul>
+              
+              <h4>🆕 Supercharged Features</h4>
+              <ul>
+                <li><strong>Geo-Fingerprint Tool:</strong> Find locations by combining visual clues without writing code</li>
+                <li><strong>Query History:</strong> Automatically saves your last 30 queries locally in your browser</li>
+                <li><strong>Street View Integration:</strong> Click any result to open Google Street View, Mapillary, or KartaView</li>
+                <li><strong>Quiz Mode:</strong> Test your OSM knowledge with interactive quizzes</li>
+              </ul>
             </div>
-            <h3 class="t" data-t="help.section.key"></h3>
+            <h3>Map Key</h3>
             <div>
               <img
                 src="map-key.png"
-                alt=""
-                class="t"
-                data-t="[alt]help.key.example"
+                alt="Example of map key colors"
               />
-              <p class="t" data-t="help.key.description"></p>
+              <p>
+                The above image shows how OSM data types are color-coded on the map: 
+                nodes (points), ways (lines), and areas are displayed in different colors to help you 
+                identify different types of features at a glance.
+              </p>
             </div>
-            <h3 class="t" data-t="help.section.export"></h3>
+            <h3>Export Data</h3>
             <div>
-              <p class="t" data-t="[html]help.export"></p>
-              <h4 class="t" data-t="help.export.map.title"></h4>
-              <p class="t" data-t="help.export.map.expl"></p>
-              <h4 class="t" data-t="help.export.query_data.title"></h4>
-              <p class="t" data-t="help.export.query_data.expl"></p>
+              <p>
+                You can export your query results in various formats using the <em>Export</em> button.
+              </p>
+              <h4>Export as Image</h4>
+              <p>
+                Save the current map view as a PNG or SVG image. Perfect for documentation or presentations.
+              </p>
+              <h4>Export Query & Data</h4>
+              <p>
+                Export your query or the resulting data in formats like GeoJSON, GPX, KML, or raw OSM data. 
+                You can also convert to other formats using the built-in converter.
+              </p>
             </div>
-            <h3 class="t" data-t="help.section.about"></h3>
+            <h3>About</h3>
             <div>
+              <div class="box" style="background: #f8f9fa; border-left: 4px solid #2366d1;">
+                <h4 style="color: #2366d1;"><strong style="color: #2366d1 !important;">About Supercharged Overpass</strong></h4>
+                <p style="color: #363636;">
+                  Supercharged Overpass is built on top of <a href="https://github.com/tyrasd/overpass-turbo" target="_blank">overpass turbo</a> 
+                  by Martin Raifer and contributors. This enhanced version adds powerful features for GeoGuessr players and location enthusiasts
+                  while maintaining full compatibility with the original tool.
+                </p>
+                <p style="margin-bottom: 0; color: #2366d1 !important;">
+                  <strong style="color: #000000;">License: </strong> MIT License (same as overpass turbo)<br>
+                  <strong style="color: #000000;">Original Project: </strong> <a href="https://overpass-turbo.eu" target="_blank" style="text-decoration: underline;">overpass-turbo.eu</a><br>
+                  <strong style="color: #000000;">Source Code: </strong> <a href="https://github.com/iamvibhorsingh/Supercharged-overpass" target="_blank" style="text-decoration: underline;">github.com/iamvibhorsingh/Supercharged-overpass</a>
+                </p>
+              </div>
               <a href="https://overpass-api.de">
                 <img
                   style="float: right"
                   src="https://wiki.openstreetmap.org/w/images/b/b3/Powered_by_Overpass_API.png"
                   alt="powered by Overpass API"
               /></a>
-              <p class="t" data-t="[html]help.about.maintained"></p>
-              <h4 class="t" data-t="help.about.feedback.title"></h4>
-              <p class="t" data-t="[html]help.about.feedback"></p>
-              <h4 class="t" data-t="help.about.source.title"></h4>
-              <p class="t" data-t="[html]help.about.source"></p>
-              <p id="overpass-turbo-version"></p>
+              <p>
+                Supercharged Overpass is maintained as an enhanced fork with new features for GeoGuessr 
+                players and location enthusiasts. The core functionality and compatibility with the 
+                original overpass turbo are preserved.
+              </p>
+              <h4>💬 Feedback & Issues</h4>
+              <p>
+                For issues related to Supercharged features (Geo-Fingerprint, Query History, Street View), 
+                please report them on <a href="https://github.com/iamvibhorsingh/Supercharged-overpass/issues" target="_blank">GitHub</a>. 
+                For core overpass turbo functionality, refer to the <a href="https://github.com/tyrasd/overpass-turbo" target="_blank">original project</a>.
+              </p>
+              <h4>📦 Source Code</h4>
+              <p>
+                This tool is available at <a href="https://github.com/iamvibhorsingh/Supercharged-overpass" target="_blank">github.com/iamvibhorsingh/Supercharged-overpass</a> 
+                and is built on <a href="https://github.com/tyrasd/overpass-turbo" target="_blank">overpass turbo</a>. 
+                Released under the MIT License with all enhancements maintaining compatibility with the original codebase.
+              </p>
             </div>
-            <h3 class="t" data-t="help.section.attribution"></h3>
+            <h3>Attribution & Credits</h3>
             <div>
-              <h4 class="t" data-t="help.attr.data_sources"></h4>
+              <h4>Data Sources</h4>
               <ul class="plain">
-                <li class="t" data-t="[html]help.attr.data"></li>
                 <li>
-                  <span class="t" data-t="help.attr.mining"></span>
+                  Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors
+                </li>
+                <li>
+                  Data mining by
                   <a href="https://overpass-api.de/">Overpass API</a>
                 </li>
-                <li class="t" data-t="[html]help.attr.tiles"></li>
                 <li>
-                  <span class="t" data-t="help.attr.search"></span>
-                  <a href="https://wiki.openstreetmap.org/wiki/Nominatim"
-                    >Nominatim</a
-                  >
+                  Map tiles © <a href="https://openstreetmap.org/" target="_blank">OpenStreetMap</a> contributors
+                </li>
+                <li>
+                  Search provided by
+                  <a href="https://wiki.openstreetmap.org/wiki/Nominatim" target="_blank">Nominatim</a>
+                </li>
+                <li>
+                  Street View by Google Maps, Mapillary, and KartaView
                 </li>
               </ul>
-              <h4 class="t" data-t="help.attr.software"></h4>
+              <h4>Software & Libraries</h4>
               <ul class="plain">
                 <li>
-                  <span class="t" data-t="help.attr.leaflet"></span>
+                  Map powered by
                   <a href="https://leafletjs.com/">Leaflet</a>
                 </li>
                 <li>
-                  <span class="t" data-t="help.attr.codemirror"></span>
+                  Editor powered by
                   <a href="https://codemirror.net/">CodeMirror</a>
                 </li>
                 <li>
-                  <span class="t" data-t="help.attr.other_libs"></span>
+                  Based on <a href="https://github.com/tyrasd/overpass-turbo" target="_blank">overpass turbo</a> by Martin Raifer
+                </li>
+                <li>
+                  Other libraries:
                   <span id="overpass-turbo-dependencies"></span>
                 </li>
               </ul>
@@ -1043,13 +1189,12 @@
           <div class="field">
             <div class="control has-icons-left">
               <input
-                type="search"
+                type="text"
+                name="search"
+                id="search"
+                data-t-placeholder="search.placeholder"
                 autofocus="autofocus"
-                placeholder=""
-                value=""
-                id="ffs-input"
                 class="t input monospace"
-                data-t="[placeholder]ffs.placeholder"
                 required
               />
               <span class="icon is-left">
@@ -1120,6 +1265,210 @@
       </div>
     </div>
 
+    <!-- Geo-Fingerprint Tool -->
+    <div class="modal" id="geo-fingerprint-dialog">
+      <div class="modal-background"></div>
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">
+            <span class="icon">
+              <span class="fas fa-map-marker-alt"></span>
+            </span>
+            <span>Geo-Fingerprint Tool</span>
+          </p>
+          <button
+            class="delete"
+            aria-label="close"
+            data-ide-handler="click:onGeoFingerprintClose"
+          ></button>
+        </header>
+        <section class="modal-card-body">
+          <div class="content">
+            <p style="color: #4a4a4a; font-size: 1rem; line-height: 1.6;">
+              <strong style="color: #2366d1; font-size: 1.05rem;">Find locations by combining multiple visual clues.</strong><br>
+              Add the features you can see (e.g., a post office near a supermarket)
+              and we'll generate a query to find matching locations.
+            </p>
+          </div>
+          
+          <!-- Quick Presets -->
+          <div class="field is-grouped is-grouped-multiline" style="margin-bottom: 1rem;">
+            <div class="control">
+              <div class="tags has-addons">
+                <span class="tag is-info">Quick Presets:</span>
+              </div>
+            </div>
+            <div class="control">
+              <button class="button is-small is-light" data-preset="post-office-supermarket">
+                <span class="icon is-small">
+                  <span class="fas fa-envelope"></span>
+                </span>
+                <span>Post Office near Supermarket</span>
+              </button>
+            </div>
+            <div class="control">
+              <button class="button is-small is-light" data-preset="cafe-park">
+                <span class="icon is-small">
+                  <span class="fas fa-coffee"></span>
+                </span>
+                <span>Cafe near Park</span>
+              </button>
+            </div>
+            <div class="control">
+              <button class="button is-small is-light" data-preset="gas-station-highway">
+                <span class="icon is-small">
+                  <span class="fas fa-gas-pump"></span>
+                </span>
+                <span>Gas Station near Highway</span>
+              </button>
+            </div>
+            <div class="control">
+              <button class="button is-small is-light" data-preset="atm-restaurant">
+                <span class="icon is-small">
+                  <span class="fas fa-credit-card"></span>
+                </span>
+                <span>ATM near Restaurant</span>
+              </button>
+            </div>
+          </div>
+          
+          <details style="margin-bottom: 1rem;">
+            <summary style="cursor: pointer; padding: 0.75rem; background: #e8f0fe; border-radius: 6px; color: #2366d1; border: 1px solid #c5d9f2;">
+              <strong>💡 How to use this tool</strong>
+            </summary>
+            <div style="padding: 1rem; background: #f8fbff; margin-top: 0.5rem; border-radius: 6px; border: 1px solid #e0e7f1; color: #4a4a4a;">
+              <ol style="margin-left: 1.5rem; line-height: 1.8;">
+                <li><strong style="color: #363636;">Click in the input field</strong> - suggestions will appear automatically</li>
+                <li><strong style="color: #363636;">Select from suggestions</strong> - or type your own if you know the tag</li>
+                <li><strong style="color: #363636;">Add more clues</strong> - to narrow down the location</li>
+                <li><strong style="color: #363636;">Click "Build & Run"</strong> - to find matching locations!</li>
+              </ol>
+              <p style="margin-top: 0.75rem; color: #2366d1;"><strong>Examples:</strong></p>
+              <ul style="margin-left: 1.5rem; line-height: 1.6;">
+                <li>Looking for: <em style="color: #2366d1; font-weight: 600;">amenity</em> → Type: <em style="color: #2366d1; font-weight: 600;">restaurant</em></li>
+                <li>Looking for: <em style="color: #2366d1; font-weight: 600;">shop</em> → Type: <em style="color: #2366d1; font-weight: 600;">supermarket</em>, then add <em style="color: #2366d1; font-weight: 600;">name</em> → <em style="color: #2366d1; font-weight: 600;">Lidl</em></li>
+              </ul>
+            </div>
+          </details>
+
+          <!-- Clue Input Fields -->
+          <div id="geo-fp-clues-container">
+            <!-- Clues will be dynamically added here -->
+          </div>
+
+          <!-- Add Clue Button -->
+          <div class="field">
+            <button 
+              class="button is-small is-info" 
+              data-ide-handler="click:onGeoFingerprintAddClue"
+            >
+              <span class="icon">
+                <span class="fas fa-plus"></span>
+              </span>
+              <span>Add Clue</span>
+            </button>
+          </div>
+
+          <!-- Search Radius -->
+          <div class="field" style="margin-top: 1.5rem;">
+            <label class="label" style="color: #2366d1; font-weight: 600;">Default Search Radius</label>
+            <div class="control">
+              <div class="select">
+                <select id="geo-fp-radius" style="color: #2366d1;">
+                  <option value="100">100 meters</option>
+                  <option value="200" selected>200 meters</option>
+                  <option value="300">300 meters</option>
+                  <option value="500">500 meters</option>
+                  <option value="1000">1 kilometer</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+        <footer class="modal-card-foot" style="background-color: #f8f9fa; border-top: 2px solid #e9ecef;">
+          <div class="level">
+            <div class="level-right">
+              <div class="level-item">
+                <button
+                  class="button is-success"
+                  data-ide-handler="click:onGeoFingerprintRun"
+                  style="font-weight: 600;"
+                >
+                  <span class="icon">
+                    <span class="fas fa-play"></span>
+                  </span>
+                  <span>Build & Run</span>
+                </button>
+                <button
+                  class="button is-success"
+                  data-ide-handler="click:onGeoFingerprintBuild"
+                  style="font-weight: 600;"
+                >
+                  <span class="icon">
+                    <span class="fas fa-hammer"></span>
+                  </span>
+                  <span>Build Query</span>
+                </button>
+                <button class="button" data-ide-handler="click:onGeoFingerprintClose">
+                  <span>Cancel</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Query History Dialog -->
+    <div class="modal" id="query-history-dialog">
+      <div class="modal-background"></div>
+      <div class="modal-card">
+        <header class="modal-card-head">
+          <p class="modal-card-title">
+            <span class="icon">
+              <span class="fas fa-history"></span>
+            </span>
+            <span>Query History</span>
+          </p>
+          <button
+            class="delete"
+            aria-label="close"
+            data-ide-handler="click:onQueryHistoryClose"
+          ></button>
+        </header>
+        <section class="modal-card-body">
+          <div class="content">
+            <p style="color: #2366d1; margin-bottom: 1rem;">
+              Your recent queries are saved locally in your browser.
+              Click any query to load it into the editor.
+            </p>
+          </div>
+          
+          <div id="query-history-list">
+            <!-- History items will be dynamically added here -->
+          </div>
+          
+          <div class="notification is-info is-light" id="query-history-empty" style="display: none;">
+            <p>No query history yet. Run some queries to build your history!</p>
+          </div>
+        </section>
+        <footer class="modal-card-foot" style="background-color: #f8f9fa; border-top: 2px solid #e9ecef;">
+          <button
+            class="button is-danger is-light"
+            data-ide-handler="click:onQueryHistoryClear"
+          >
+            <span class="icon">
+              <span class="fas fa-trash"></span>
+            </span>
+            <span>Clear All History</span>
+          </button>
+          <button class="button" data-ide-handler="click:onQueryHistoryClose">
+            <span>Close</span>
+          </button>
+        </footer>
+      </div>
+    </div>
+
     <!--styling wizard -->
     <div class="modal" id="styler-dialog">
       <div class="modal-background"></div>
@@ -1150,7 +1499,7 @@
                 autofocus="autofocus"
                 placeholder=""
                 value=""
-                id="ffs-input"
+                id="styler-input"
                 class="t input monospace"
                 data-t="[placeholder]styler.placeholder"
                 required
@@ -1275,7 +1624,7 @@
           background-color: #f14668;
         "
       >
-        Please enable JavaScript to use overpass turbo.
+        Please enable JavaScript to use Supercharged Overpass.
       </div>
     </noscript>
   </body>
